@@ -22,12 +22,16 @@ class PushMails_Consent {
 	const WITHDRAWN = 'withdrawn';
 	const UNKNOWN   = 'unknown';
 
+	/** Ticked on the registration form, not yet backed by a login. */
+	const PENDING = 'pending';
+
 	/**
 	 * Hooks the boxes.
 	 */
 	public static function init() {
 		add_action( 'register_form', array( __CLASS__, 'render_register_box' ) );
 		add_action( 'user_register', array( __CLASS__, 'save_register_box' ) );
+		add_action( 'wp_login', array( __CLASS__, 'confirm_on_login' ), 10, 2 );
 		add_action( 'show_user_profile', array( __CLASS__, 'render_profile_box' ) );
 		add_action( 'personal_options_update', array( __CLASS__, 'save_profile_box' ) );
 	}
@@ -50,7 +54,23 @@ class PushMails_Consent {
 		if ( empty( $_POST['pushmails_marketing_consent'] ) ) {
 			return; // Unticked means "not asked to", not "withdrawn".
 		}
-		self::record( $user_id, self::GRANTED );
+		// Anyone can register any address. The box counts once the person
+		// logs in: WordPress emails the new user a link to set a password,
+		// so a login shows the mailbox is theirs — the same proof the
+		// subscribe form gets from its confirmation email.
+		self::record( $user_id, self::PENDING );
+	}
+
+	/**
+	 * @param string  $user_login Login name.
+	 * @param WP_User $user       User who just logged in.
+	 */
+	public static function confirm_on_login( $user_login, $user ) {
+		if ( ! $user instanceof WP_User || self::PENDING !== get_user_meta( $user->ID, self::META_STATE, true ) ) {
+			return;
+		}
+		self::record( $user->ID, self::GRANTED );
+		PushMails_Sync::queue_user( $user->ID );
 	}
 
 	/**

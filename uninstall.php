@@ -24,6 +24,13 @@ foreach ( array(
 	delete_option( $option );
 }
 
-foreach ( array( 'pushmails_wp_sync_user', 'pushmails_wp_backfill', 'pushmails_wp_hello', 'pushmails_form_retry' ) as $hook ) {
+foreach ( array( 'pushmails_wp_sync_user', 'pushmails_wp_backfill', 'pushmails_wp_hello' ) as $hook ) {
 	wp_unschedule_hook( $hook );
+}
+
+// The subscribe form, its retries and the email breaker are shared with
+// PushMails for WooCommerce; when that plugin took over, they are its own now.
+if ( ! defined( 'PUSHMAILS_WC_VERSION' ) ) {
+	wp_unschedule_hook( 'pushmails_form_retry' );
+	delete_transient( 'pushmails_mail_breaker' );
 }

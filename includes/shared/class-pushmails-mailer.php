@@ -70,11 +70,16 @@ class PushMails_Mailer {
 	}
 
 	/**
+	 * "customer" belongs to PushMails for WooCommerce only. PushMails for
+	 * WordPress keeps running on a site that added WooCommerce later, but it
+	 * has no setting for store emails and tells the owner store emails need
+	 * the WooCommerce plugin — so they stay with WordPress there.
+	 *
 	 * @return string[] Kinds that exist on this site.
 	 */
 	public static function kinds() {
 		$kinds = array_keys( self::KIND_DEFAULTS );
-		return class_exists( 'WooCommerce' ) ? $kinds : array_values( array_diff( $kinds, array( 'customer' ) ) );
+		return 'woocommerce' === PUSHMAILS_PLATFORM && class_exists( 'WooCommerce' ) ? $kinds : array_values( array_diff( $kinds, array( 'customer' ) ) );
 	}
 
 	/**
@@ -82,6 +87,8 @@ class PushMails_Mailer {
 	 */
 	public static function init() {
 		add_filter( 'pre_wp_mail', array( __CLASS__, 'maybe_send' ), 10, 2 );
+		// Needed with the WordPress plugin too: it is how a WooCommerce
+		// customer email is told apart from a WordPress one (and kept here).
 		if ( class_exists( 'WooCommerce' ) ) {
 			add_filter( 'woocommerce_mail_callback_params', array( __CLASS__, 'remember_wc_email' ), 10, 2 );
 			add_action( 'woocommerce_email_sent', array( __CLASS__, 'forget_wc_email' ) );
@@ -325,6 +332,11 @@ class PushMails_Mailer {
 		$status = get_option( self::status_option() );
 		$status = is_array( $status ) ? $status : array();
 		if ( null === $error ) {
+			// A busy store sends an email every few seconds; the page shows
+			// "sent N minutes ago", so one write per few minutes is enough.
+			if ( empty( $status['error'] ) && ! empty( $status['ok_at'] ) && time() - strtotime( $status['ok_at'] ) < 5 * MINUTE_IN_SECONDS ) {
+				return;
+			}
 			$status['ok_at'] = gmdate( 'c' );
 			unset( $status['error'] );
 		} else {

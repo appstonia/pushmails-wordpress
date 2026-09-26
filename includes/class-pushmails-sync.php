@@ -225,9 +225,18 @@ class PushMails_Sync {
 
 	/**
 	 * Removes every queued job (deactivation, uninstall, disconnect).
+	 *
+	 * @param bool $keep_form_retries Leave confirmed form subscribers still
+	 *                                waiting to be sent: when PushMails for
+	 *                                WooCommerce takes over, the form (and its
+	 *                                retry hook) is shared and it sends them.
 	 */
-	public static function unschedule_all() {
-		foreach ( array( self::HOOK_USER, self::HOOK_BACKFILL, self::HOOK_HELLO, PushMails_Form::RETRY_HOOK ) as $hook ) {
+	public static function unschedule_all( $keep_form_retries = false ) {
+		$hooks = array( self::HOOK_USER, self::HOOK_BACKFILL, self::HOOK_HELLO );
+		if ( ! $keep_form_retries ) {
+			$hooks[] = PushMails_Form::RETRY_HOOK;
+		}
+		foreach ( $hooks as $hook ) {
 			wp_unschedule_hook( $hook );
 		}
 	}

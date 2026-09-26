@@ -23,7 +23,8 @@ defined( 'ABSPATH' ) || exit;
  */
 class PushMails_Form {
 
-	const ACTION      = 'pushmails_subscribe';
+	const ACTION         = 'pushmails_subscribe';
+	const CONFIRM_ACTION = 'pushmails_confirm';
 	const CONFIRM_ARG = 'pushmails_confirm';
 	const RESULT_ARG  = 'pushmails';
 	const FORM_ARG    = 'pushmails_form';
@@ -52,6 +53,8 @@ class PushMails_Form {
 		add_action( 'admin_post_nopriv_' . self::ACTION, array( __CLASS__, 'handle_submit' ) );
 		add_action( 'admin_post_' . self::ACTION, array( __CLASS__, 'handle_submit' ) );
 		add_action( 'template_redirect', array( __CLASS__, 'handle_confirm' ) );
+		add_action( 'admin_post_nopriv_' . self::CONFIRM_ACTION, array( __CLASS__, 'handle_confirm_post' ) );
+		add_action( 'admin_post_' . self::CONFIRM_ACTION, array( __CLASS__, 'handle_confirm_post' ) );
 		add_action( self::RETRY_HOOK, array( __CLASS__, 'retry' ), 10, 2 );
 	}
 
@@ -314,8 +317,12 @@ class PushMails_Form {
 	}
 
 	/**
-	 * Confirmation link: sends the contact to PushMails and goes back to the
-	 * page with the form. The link works once.
+	 * Confirmation link: a page with a "Confirm" button, not the confirmation
+	 * itself. Mail security scanners (Outlook Safe Links, Mimecast, Barracuda
+	 * …) open every link in an incoming email; confirming on that visit would
+	 * subscribe an address nobody confirmed and leave the real owner, clicking
+	 * a minute later, with "link expired". Scanners open links but do not
+	 * submit forms, so the button is where the consent is.
 	 */
 	public static function handle_confirm() {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- The token is the credential.
@@ -323,24 +330,34 @@ class PushMails_Form {
 			return;
 		}
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$token   = sanitize_text_field( wp_unslash( $_GET[ self::CONFIRM_ARG ] ) );
-		$key     = self::PENDING_PREFIX . hash( 'sha256', $token );
-		$pending = '' !== $token ? get_transient( $key ) : false;
-		if ( ! is_array( $pending ) ) {
-			// Which page had the form is only known from the pending sign-up,
-			// so the answer is a page of its own rather than a redirect.
-			$message = self::result_message( 'expired' );
-			wp_die(
-				esc_html( $message['text'] ),
-				esc_html( get_bloginfo( 'name' ) ),
-				array(
-					'response'  => 200,
-					'link_url'  => esc_url( home_url( '/' ) ),
-					'link_text' => esc_html__( 'Go to the website', 'pushmails-for-wordpress' ),
-				)
-			);
+		$token = sanitize_text_field( wp_unslash( $_GET[ self::CONFIRM_ARG ] ) );
+		if ( ! is_array( self::pending( $token ) ) ) {
+			self::expired();
 		}
-		delete_transient( $key );
+		nocache_headers();
+		$site  = get_bloginfo( 'name' );
+		$html  = '<h1>' . esc_html( $site ) . '</h1>';
+		$html .= '<p>' . esc_html__( 'Please confirm that you want to receive emails from us.', 'pushmails-for-wordpress' ) . '</p>';
+		$html .= '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
+		$html .= '<input type="hidden" name="action" value="' . esc_attr( self::CONFIRM_ACTION ) . '" />';
+		$html .= '<input type="hidden" name="token" value="' . esc_attr( $token ) . '" />';
+		$html .= '<p><button type="submit" class="button button-large">' . esc_html__( 'Confirm subscription', 'pushmails-for-wordpress' ) . '</button></p>';
+		$html .= '</form>';
+		wp_die( $html, esc_html( $site ), array( 'response' => 200 ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Built from escaped parts.
+	}
+
+	/**
+	 * The "Confirm" button: sends the contact to PushMails and goes back to
+	 * the page with the form. The token works once.
+	 */
+	public static function handle_confirm_post() {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- The token is the credential; a nonce would expire on cached pages.
+		$token   = isset( $_POST['token'] ) ? sanitize_text_field( wp_unslash( $_POST['token'] ) ) : '';
+		$pending = self::pending( $token );
+		if ( ! is_array( $pending ) ) {
+			self::expired();
+		}
+		delete_transient( self::PENDING_PREFIX . hash( 'sha256', $token ) );
 
 		$contact = array(
 			'email'        => $pending['email'],
@@ -362,6 +379,32 @@ class PushMails_Form {
 			self::retry( $contact, 0 );
 		}
 		self::back( $pending['return'] ? $pending['return'] : home_url( '/' ), 'confirmed' );
+	}
+
+	/**
+	 * @param string $token Token from the confirmation link.
+	 * @return array|false The pending sign-up.
+	 */
+	private static function pending( $token ) {
+		return '' !== $token ? get_transient( self::PENDING_PREFIX . hash( 'sha256', $token ) ) : false;
+	}
+
+	/**
+	 * Expired or used link. Which page had the form is only known from the
+	 * pending sign-up, so the answer is a page of its own rather than a
+	 * redirect.
+	 */
+	private static function expired() {
+		$message = self::result_message( 'expired' );
+		wp_die(
+			esc_html( $message['text'] ),
+			esc_html( get_bloginfo( 'name' ) ),
+			array(
+				'response'  => 200,
+				'link_url'  => esc_url( home_url( '/' ) ),
+				'link_text' => esc_html__( 'Go to the website', 'pushmails-for-wordpress' ),
+			)
+		);
 	}
 
 	/**
@@ -430,10 +473,22 @@ class PushMails_Form {
 	 * The connecting address only. Forwarding headers are not read: anyone can
 	 * send them, and trusting them would let one client reset its own limit.
 	 *
+	 * Behind a proxy or CDN that the server is not set up for (no
+	 * mod_remoteip / real_ip), every visitor has the proxy's address and
+	 * shares one limit, so a handful of posts would turn everyone away. Such a
+	 * site passes the visitor's address through the `pushmails_client_ip`
+	 * filter, reading the header its own proxy sets.
+	 *
 	 * @return string
 	 */
 	private static function client_ip() {
-		return isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$ip = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		/**
+		 * Filters the visitor address the subscribe form rate-limits by.
+		 *
+		 * @param string $ip REMOTE_ADDR.
+		 */
+		return (string) apply_filters( 'pushmails_client_ip', $ip );
 	}
 
 	/**

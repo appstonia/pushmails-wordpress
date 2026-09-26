@@ -66,6 +66,8 @@ class PushMails_Plugin {
 	 * Stops background work; settings stay so re-activating resumes as before.
 	 */
 	public static function deactivate() {
-		PushMails_Sync::unschedule_all();
+		// PUSHMAILS_TAKEOVER: PushMails for WooCommerce is switching this
+		// plugin off to carry on in its place.
+		PushMails_Sync::unschedule_all( defined( 'PUSHMAILS_TAKEOVER' ) );
 	}
 }

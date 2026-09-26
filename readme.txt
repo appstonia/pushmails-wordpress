@@ -12,7 +12,7 @@ Grow your PushMails audience with a double opt-in subscribe form and opted-in si
 
 == Description ==
 
-* **Subscribe form with double opt-in.** Add the "PushMails subscribe form" block or the `[pushmails_form]` shortcode. Visitors get a confirmation email and join your PushMails audience only after clicking the link.
+* **Subscribe form with double opt-in.** Add the "PushMails subscribe form" block or the `[pushmails_form]` shortcode. Visitors get a confirmation email and join your PushMails audience only after confirming on the page it links to.
 * **Site users.** A consent box on the registration form and on the user profile. By default every user is sent so site emails reach them, but only users who consent receive campaigns. Authors, editors and administrators are never sent.
 * **Site emails through PushMails.** Password resets, account emails and notifications from other plugins can be delivered by PushMails. You choose which kinds; emails to administrators are off by default. Anything PushMails cannot take is sent by WordPress as before — no email is lost.
 * **Ready for WooCommerce.** If your site starts selling with WooCommerce, install PushMails for WooCommerce: it switches this plugin off and takes over its connection, settings and subscribe forms.

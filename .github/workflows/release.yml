@@ -1,0 +1,35 @@
+name: release
+
+# A version tag builds the installable zip and publishes it on GitHub Releases.
+# The tag must match the version in the plugin header (scripts/version.sh).
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "7.4"
+      - name: Check version and syntax
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          scripts/version.sh check
+          make check
+      - name: Build zip
+        run: make zip
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(scripts/version.sh check)
+          notes=$(awk -v v="$version" '$0 ~ "^## \\[" v "\\]" {p=1; next} /^## \[/ {p=0} p' CHANGELOG.md)
+          gh release create "${{ github.ref_name }}" "dist/pushmails-for-wordpress-${version}.zip" \
+            --title "PushMails for WordPress ${version}" --notes "$notes"

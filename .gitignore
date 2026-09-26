@@ -1,0 +1,6 @@
+/dist/
+/build/
+/dev/
+.DS_Store
+.idea
+.vscode/

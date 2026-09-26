@@ -1,0 +1,11 @@
+/.git
+/.github
+/dev
+/dist
+/build
+/scripts
+/.distignore
+/.gitignore
+/Makefile
+/README.md
+/CHANGELOG.md
